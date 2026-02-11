@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "timestamp_prefix": true,
+  "date_format": "YYYYMMDD-HHMM",
+  "slug_max_length": 50,
+  "fallback_behavior": "keep_original",
+  "collision_strategy": "append_number",
+  "extraction_sources": [
+    "frontmatter_title",
+    "first_h1",
+    "overview_section",
+    "first_meaningful_line"
+  ],
+  "exclude_patterns": ["*-agent-*.md"],
+  "notify_user": true,
+  "dry_run": false
+}

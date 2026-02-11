@@ -1,0 +1,62 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/memory/session-end.sh"
+          },
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js",
+            "timeout": 10
+          }
+        ],
+        "description": "Save session state and rename plan files"
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/memory/session-start.sh"
+          },
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js",
+            "timeout": 10
+          }
+        ],
+        "description": "Load session context and rename orphan plan files"
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/memory/pre-compact.sh"
+          }
+        ],
+        "description": "Preserve state before context compaction"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/cicd/pre-commit-guard.sh"
+          }
+        ],
+        "description": "Validate SSH and GPG signing before git commit"
+      }
+    ]
+  }
+}
