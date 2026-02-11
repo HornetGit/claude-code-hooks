@@ -29,9 +29,14 @@
             "type": "command",
             "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/plugin-sync/plugin-cache-sync.sh",
+            "timeout": 15
           }
         ],
-        "description": "Load session context and rename orphan plan files"
+        "description": "Load session context, rename orphan plans, sync plugin caches"
       }
     ],
     "PreCompact": [

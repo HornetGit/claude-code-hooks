@@ -18,6 +18,7 @@ echo ""
 mkdir -p "${DEST}/memory"
 mkdir -p "${DEST}/plan-rename/lib"
 mkdir -p "${DEST}/cicd"
+mkdir -p "${DEST}/plugin-sync"
 
 # Copy hooks (cp -af preserves permissions, overwrites in place)
 cp -af "${SCRIPT_DIR}/hooks/memory/session-start.sh"      "${DEST}/memory/"
@@ -27,6 +28,7 @@ cp -af "${SCRIPT_DIR}/hooks/plan-rename/rename-plan.js"    "${DEST}/plan-rename/
 cp -af "${SCRIPT_DIR}/hooks/plan-rename/lib/plan-utils.js" "${DEST}/plan-rename/lib/"
 cp -af "${SCRIPT_DIR}/hooks/plan-rename/lib/utils.js"      "${DEST}/plan-rename/lib/"
 cp -af "${SCRIPT_DIR}/hooks/cicd/pre-commit-guard.sh"      "${DEST}/cicd/"
+cp -af "${SCRIPT_DIR}/hooks/plugin-sync/plugin-cache-sync.sh" "${DEST}/plugin-sync/"
 
 # Copy config example if no config.json exists yet
 if [ ! -f "${DEST}/plan-rename/config.json" ]; then
@@ -36,6 +38,7 @@ fi
 # Make bash scripts executable
 chmod +x "${DEST}/memory/"*.sh
 chmod +x "${DEST}/cicd/"*.sh
+chmod +x "${DEST}/plugin-sync/"*.sh
 
 echo "[install] Done! Hooks installed to: ${DEST}"
 echo ""
@@ -48,3 +51,4 @@ echo "  ${DEST}/memory/session-end.sh      (Stop)"
 echo "  ${DEST}/memory/pre-compact.sh      (PreCompact)"
 echo "  ${DEST}/plan-rename/rename-plan.js  (Stop + SessionStart)"
 echo "  ${DEST}/cicd/pre-commit-guard.sh   (PreToolUse)"
+echo "  ${DEST}/plugin-sync/plugin-cache-sync.sh (SessionStart)"

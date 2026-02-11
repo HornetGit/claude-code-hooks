@@ -1,6 +1,13 @@
 # claude-code-hooks
 
-Productivity hooks for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that add **session memory**, **automatic plan file renaming**, and **git safety checks**.
+Productivity hooks for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that add **session memory**, **automatic plan file renaming**, **git safety checks**, and **plugin cache sync**.
+
+**Why useful?** Each hook solves a real annoyance:
+
+- **Session memory** — pick up where you left off; sessions leave a searchable paper trail instead of vanishing
+- **Plan rename** — Claude's random three-word plan filenames (`bubbly-imagining-stearns.md`) become dated, human-readable names (`20260211-1620-add-user-auth.md`)
+- **Git safety** — preflight checks for SSH connectivity, GPG signing, and accidental secret commits before every `git commit`
+- **Plugin cache sync** — edit plugin source files and have the frozen cache update automatically, no IDE reload needed
 
 ## What Are Claude Code Hooks?
 
@@ -37,6 +44,24 @@ Title extraction priority:
 **Why?** Claude Code generates random three-word plan filenames that are impossible to find later. This hook makes plan files searchable and dated.
 
 > **Note:** The rename hook runs on both Stop and SessionStart because the Stop hook can be unreliable when Claude is in plan mode. Running at SessionStart catches any plans missed during the previous session's shutdown.
+
+### Plugin Cache Sync (`hooks/plugin-sync/`)
+
+Auto-sync Claude Code plugin source directories to the frozen plugin cache.
+
+| Hook | Event | What It Does |
+|------|-------|-------------|
+| `plugin-cache-sync.sh` | SessionStart | Discovers plugin source directories (via `.claude-plugin/plugin.json`), compares against a `.last-sync` marker, and runs `rsync` when changes are detected |
+
+How it works:
+1. Scans `~/.claude/` (or custom `PLUGIN_ROOTS`) for directories containing `.claude-plugin/plugin.json`
+2. Derives the cache path from plugin name/version: `~/.claude/plugins/cache/<org>/<name>/<version>/`
+3. Syncs only when source files are newer than the `.last-sync` marker (no-op when up to date)
+4. Skips self-sync (when source and cache resolve to the same path)
+
+**Why?** Claude Code's native plugin system uses a frozen cache. When you edit plugin source files during development, the cache doesn't update automatically. This hook bridges that gap on every session start.
+
+> **Note:** Only useful if you develop Claude Code native plugins. If you only use the BMAD-like pattern or don't use plugins, skip this hook.
 
 ### Git Safety (`hooks/cicd/`)
 
@@ -105,6 +130,11 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
             "type": "command",
             "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/plugin-sync/plugin-cache-sync.sh",
+            "timeout": 15
           }
         ]
       }
@@ -139,6 +169,7 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
 ```bash
 chmod +x ~/.claude/hooks/claude-code-hooks/memory/*.sh
 chmod +x ~/.claude/hooks/claude-code-hooks/cicd/*.sh
+chmod +x ~/.claude/hooks/claude-code-hooks/plugin-sync/*.sh
 ```
 
 ## Pick and Choose
@@ -148,6 +179,7 @@ You don't need all hooks. Install only what you want:
 - **Session memory only** — copy `hooks/memory/`, wire `Stop`, `SessionStart`, and `PreCompact` events
 - **Plan rename only** — copy `hooks/plan-rename/`, wire `Stop` and `SessionStart` events
 - **Git safety only** — copy `hooks/cicd/`, wire `PreToolUse` event
+- **Plugin cache sync only** — copy `hooks/plugin-sync/`, wire `SessionStart` event
 
 ## Configuration
 
@@ -179,12 +211,14 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 | `pre-compact.sh` | PreCompact | Yes (JSON with `session_id`) | No |
 | `rename-plan.js` | Stop + SessionStart | No | No |
 | `pre-commit-guard.sh` | PreToolUse | No | Yes (exit 1 blocks commit on SSH failure) |
+| `plugin-cache-sync.sh` | SessionStart | No | No |
 
 ## Requirements
 
 - **Claude Code** CLI installed
 - **Node.js** (for plan-rename hook)
-- **Bash** (for memory and cicd hooks)
+- **Bash** (for memory, cicd, and plugin-sync hooks)
+- **rsync** (for plugin-cache-sync — typically pre-installed on Linux/macOS)
 - **SSH key** configured for GitHub (for pre-commit-guard)
 - **GPG key** configured (optional — pre-commit-guard warns but doesn't block without it)
 
@@ -199,6 +233,7 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 ```bash
 chmod +x ~/.claude/hooks/claude-code-hooks/memory/*.sh
 chmod +x ~/.claude/hooks/claude-code-hooks/cicd/*.sh
+chmod +x ~/.claude/hooks/claude-code-hooks/plugin-sync/*.sh
 ```
 
 **GPG_TTY not set:**
@@ -206,14 +241,53 @@ The pre-commit-guard hook sets `GPG_TTY` automatically if needed. If GPG signing
 ```bash
 export GPG_TTY=$(tty)
 ```
+To make it permanent (optional):
+```bash
+echo 'export GPG_TTY=$(tty)' >> ~/.bashrc
+```
 
 **Plan files not being renamed:**
 - Set `DEBUG=1` to enable debug logging: `DEBUG=1 node hooks/plan-rename/rename-plan.js`
 - Check `/tmp/rename-plan-debug.log` for output
 - The hook only renames files matching Claude's random three-word pattern (e.g., `adjective-verb-name.md`)
 
+**Plugin cache not syncing:**
+- Ensure the plugin source has `.claude-plugin/plugin.json` with `name` and `version` fields
+- Check that `rsync` is installed: `which rsync`
+- Override scan roots via `PLUGIN_ROOTS="/path/to/plugins"` environment variable
+- The hook skips directories where source and cache resolve to the same path
+
 **Session files:**
 Session logs are stored in `~/.claude/sessions/`. Compaction events are logged to `~/.claude/sessions/compaction-log.txt`.
+
+## Testing Without Disruption
+
+You can test all hooks in an isolated environment without touching your real `~/.claude/` setup. This overrides `HOME` to a temporary directory so nothing leaks into your active configuration:
+
+```bash
+cd /path/to/claude-code-hooks   # where install.sh lives
+HOME=/tmp/claude-test-home bash -c '
+  mkdir -p $HOME/.claude/sessions $HOME/.claude/plans $HOME/.claude/skills/learned
+  echo "# Test Plan" > $HOME/.claude/plans/bubbly-testing-hooks.md
+  bash install.sh /tmp/claude-code-hooks-test
+  echo "--- session-start ---"
+  /tmp/claude-code-hooks-test/memory/session-start.sh 2>&1
+  echo "--- session-end ---"
+  echo "{\"session_id\":\"test-1234\"}" | /tmp/claude-code-hooks-test/memory/session-end.sh 2>&1
+  echo "--- rename-plan ---"
+  node /tmp/claude-code-hooks-test/plan-rename/rename-plan.js 2>&1
+  echo "--- plugin-cache-sync ---"
+  /tmp/claude-code-hooks-test/plugin-sync/plugin-cache-sync.sh 2>&1
+  echo "--- pre-commit-guard ---"
+  /tmp/claude-code-hooks-test/cicd/pre-commit-guard.sh 2>&1
+  echo "=== Plans after rename ==="
+  ls $HOME/.claude/plans/
+'
+# Cleanup
+rm -rf /tmp/claude-code-hooks-test /tmp/claude-test-home
+```
+
+Expected output: each hook reports success, and `bubbly-testing-hooks.md` gets renamed to a dated filename.
 
 ## License
 
