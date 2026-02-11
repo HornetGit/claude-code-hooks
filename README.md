@@ -19,11 +19,11 @@ Claude Code supports [hooks](https://docs.anthropic.com/en/docs/claude-code/hook
 
 Track session context across Claude Code sessions.
 
-| Hook | Event | What It Does |
-|------|-------|-------------|
-| `session-start.sh` | SessionStart | Scans for recent session files and learned skills, reports availability to stderr |
-| `session-end.sh` | Stop | Creates/updates a dated session log (`~/.claude/sessions/YYYY-MM-DD-XXXXXXXX-session.md`) with timestamps and tracking sections |
-| `pre-compact.sh` | PreCompact | Logs compaction events and annotates the active session file before Claude summarizes context |
+| Hook                          | Event        | What It Does |
+|-------------------------------|--------------|-------------|
+| `session-start.sh`            | SessionStart | Scans for recent session files and learned skills, reports availability to stderr |
+| `session-end.sh`              | Stop         | Creates/updates a dated session log (`~/.claude/sessions/YYYY-MM-DD-XXXXXXXX-session.md`) with timestamps and tracking sections |
+| `pre-compact.sh`              | PreCompact   | Logs compaction events and annotates the active session file before Claude summarizes context |
 
 **Why?** Claude Code sessions are ephemeral. These hooks create a paper trail so you (and Claude) can pick up where you left off.
 
@@ -31,9 +31,9 @@ Track session context across Claude Code sessions.
 
 Automatically rename Claude's randomly-generated plan files to descriptive, dated names.
 
-| Hook | Event | What It Does |
-|------|-------|-------------|
-| `rename-plan.js` | Stop + SessionStart | Detects random plan names (e.g., `bubbly-imagining-stearns.md`) and renames them based on content (e.g., `20260211-1620-add-user-auth.md`) |
+| Hook                          | Event             | What It Does |
+|-------------------------------|-------------------|-------------|
+| `rename-plan.js`              | Stop + SessionStart | Detects random plan names (e.g., `bubbly-imagining-stearns.md`) and renames them based on content (e.g., `20260211-1620-add-user-auth.md`) |
 
 Title extraction priority:
 1. Frontmatter `title:` field
@@ -49,9 +49,9 @@ Title extraction priority:
 
 Auto-sync Claude Code plugin source directories to the frozen plugin cache.
 
-| Hook | Event | What It Does |
-|------|-------|-------------|
-| `plugin-cache-sync.sh` | SessionStart | Discovers plugin source directories (via `.claude-plugin/plugin.json`), compares against a `.last-sync` marker, and runs `rsync` when changes are detected |
+| Hook                          | Event        | What It Does |
+|-------------------------------|--------------|-------------|
+| `plugin-cache-sync.sh`        | SessionStart | Discovers plugin source directories (via `.claude-plugin/plugin.json`), compares against a `.last-sync` marker, and runs `rsync` when changes are detected |
 
 How it works:
 1. Scans `~/.claude/` (or custom `PLUGIN_ROOTS`) for directories containing `.claude-plugin/plugin.json`
@@ -67,9 +67,9 @@ How it works:
 
 Pre-commit validation for SSH, GPG signing, and sensitive file detection.
 
-| Hook | Event | What It Does |
-|------|-------|-------------|
-| `pre-commit-guard.sh` | PreToolUse | Validates SSH connectivity, GPG signing config, and scans for sensitive staged files before `git commit` |
+| Hook                          | Event      | What It Does |
+|-------------------------------|------------|-------------|
+| `pre-commit-guard.sh`         | PreToolUse | Validates SSH connectivity, GPG signing config, and scans for sensitive staged files before `git commit` |
 
 Three validation stages:
 1. **SSH connectivity** (BLOCKING) — tests `ssh -T git@github.com`; blocks commit on failure
@@ -204,14 +204,14 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 
 ## Hook Events Reference
 
-| Hook | Lifecycle Event | Receives stdin? | Blocking? |
-|------|----------------|-----------------|-----------|
-| `session-start.sh` | SessionStart | No | No |
-| `session-end.sh` | Stop | Yes (JSON with `session_id`) | No |
-| `pre-compact.sh` | PreCompact | Yes (JSON with `session_id`) | No |
-| `rename-plan.js` | Stop + SessionStart | No | No |
-| `pre-commit-guard.sh` | PreToolUse | No | Yes (exit 1 blocks commit on SSH failure) |
-| `plugin-cache-sync.sh` | SessionStart | No | No |
+| Hook                          | Lifecycle Event     | Receives stdin?              | Blocking? |
+|-------------------------------|---------------------|------------------------------|-----------|
+| `session-start.sh`            | SessionStart        | No                           | No |
+| `session-end.sh`              | Stop                | Yes (JSON with `session_id`) | No |
+| `pre-compact.sh`              | PreCompact          | Yes (JSON with `session_id`) | No |
+| `rename-plan.js`              | Stop + SessionStart | No                           | No |
+| `pre-commit-guard.sh`         | PreToolUse          | No                           | Yes (exit 1 blocks commit on SSH failure) |
+| `plugin-cache-sync.sh`        | SessionStart        | No                           | No |
 
 ## Requirements
 
@@ -228,6 +228,7 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 - Check `~/.claude/settings.json` has the correct `hooks` block
 - Verify the `matcher` patterns match (use `"*"` to match all, or `"Bash(git commit*)"` for specific tools)
 - Restart Claude Code after changing settings
+- **Check hook output in VSCode:** Open the Output panel (`Ctrl+Shift+U` or `View > Output`), select **"Anthropic.claude-code.Claude"** from the channel dropdown. Use the **filter box** (funnel icon next to the dropdown) to search for hook tags — e.g., type `PlanRename` to see plan rename output, `SessionStart` for session hooks, or `pre-commit-guard` for git safety. If no output appears for a hook, it's not being triggered — double-check the matcher and command path in `settings.json`.
 
 **Permission denied:**
 ```bash
