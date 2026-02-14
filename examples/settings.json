@@ -6,6 +6,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/git-session/git-session-end.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/claude-code-hooks/memory/session-end.sh"
           },
           {
@@ -14,13 +19,18 @@
             "timeout": 10
           }
         ],
-        "description": "Save session state and rename plan files"
+        "description": "Git session snapshot + save session state + rename plan files"
       }
     ],
     "SessionStart": [
       {
         "matcher": "*",
         "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/git-session/git-session-start.sh",
+            "timeout": 10
+          },
           {
             "type": "command",
             "command": "~/.claude/hooks/claude-code-hooks/memory/session-start.sh"
@@ -36,7 +46,7 @@
             "timeout": 15
           }
         ],
-        "description": "Load session context, rename orphan plans, sync plugin caches"
+        "description": "Git session branch + load session context + rename orphan plans + sync plugins"
       }
     ],
     "PreCompact": [
@@ -45,10 +55,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "~/.claude/hooks/claude-code-hooks/git-session/git-session-checkpoint.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "command": "~/.claude/hooks/claude-code-hooks/memory/pre-compact.sh"
           }
         ],
-        "description": "Preserve state before context compaction"
+        "description": "Git session checkpoint + preserve state before compaction"
       }
     ],
     "PreToolUse": [

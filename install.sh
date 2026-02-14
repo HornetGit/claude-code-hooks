@@ -19,6 +19,7 @@ mkdir -p "${DEST}/memory"
 mkdir -p "${DEST}/plan-rename/lib"
 mkdir -p "${DEST}/cicd"
 mkdir -p "${DEST}/plugin-sync"
+mkdir -p "${DEST}/git-session"
 
 # Copy hooks (cp -af preserves permissions, overwrites in place)
 cp -af "${SCRIPT_DIR}/hooks/memory/session-start.sh"      "${DEST}/memory/"
@@ -29,6 +30,11 @@ cp -af "${SCRIPT_DIR}/hooks/plan-rename/lib/plan-utils.js" "${DEST}/plan-rename/
 cp -af "${SCRIPT_DIR}/hooks/plan-rename/lib/utils.js"      "${DEST}/plan-rename/lib/"
 cp -af "${SCRIPT_DIR}/hooks/cicd/pre-commit-guard.sh"      "${DEST}/cicd/"
 cp -af "${SCRIPT_DIR}/hooks/plugin-sync/plugin-cache-sync.sh" "${DEST}/plugin-sync/"
+cp -af "${SCRIPT_DIR}/hooks/git-session/git-session-lib.sh"        "${DEST}/git-session/"
+cp -af "${SCRIPT_DIR}/hooks/git-session/git-session-start.sh"      "${DEST}/git-session/"
+cp -af "${SCRIPT_DIR}/hooks/git-session/git-session-checkpoint.sh"  "${DEST}/git-session/"
+cp -af "${SCRIPT_DIR}/hooks/git-session/git-session-end.sh"         "${DEST}/git-session/"
+cp -af "${SCRIPT_DIR}/hooks/git-session/claude-session-rollback.sh" "${DEST}/git-session/"
 
 # Copy config example if no config.json exists yet
 if [ ! -f "${DEST}/plan-rename/config.json" ]; then
@@ -39,6 +45,7 @@ fi
 chmod +x "${DEST}/memory/"*.sh
 chmod +x "${DEST}/cicd/"*.sh
 chmod +x "${DEST}/plugin-sync/"*.sh
+chmod +x "${DEST}/git-session/"*.sh
 
 echo "[install] Done! Hooks installed to: ${DEST}"
 echo ""
@@ -52,3 +59,7 @@ echo "  ${DEST}/memory/pre-compact.sh      (PreCompact)"
 echo "  ${DEST}/plan-rename/rename-plan.js  (Stop + SessionStart)"
 echo "  ${DEST}/cicd/pre-commit-guard.sh   (PreToolUse)"
 echo "  ${DEST}/plugin-sync/plugin-cache-sync.sh (SessionStart)"
+echo "  ${DEST}/git-session/git-session-start.sh       (SessionStart)"
+echo "  ${DEST}/git-session/git-session-checkpoint.sh   (PreCompact)"
+echo "  ${DEST}/git-session/git-session-end.sh          (Stop)"
+echo "  ${DEST}/git-session/claude-session-rollback.sh   (helper)"

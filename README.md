@@ -1,9 +1,15 @@
 # claude-code-hooks
 
-Productivity hooks for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that add **session memory**, **automatic plan file renaming**, **git safety checks**, and **plugin cache sync**.
+> **Give a solid memory to your Claude Code Engineering team.**<br>
+> **Never lose work, never lose context again.**
+>
+> Claude Code sessions are ephemeral — when they end, your working tree changes, session context, and plan files scatter or vanish. These hooks fix that: every session is automatically versioned on a local git branch, session logs persist so Claude picks up where it left off, and plan files get human-readable names instead of `bubbly-imagining-stearns.md`. Claude can call the rollback helper (`claude-session-rollback.sh`) directly to trace, compare, and restore any file to any checkpoint — no manual intervention needed.
+
+Productivity hooks for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that add **git session safety net**, **session memory**, **automatic plan file renaming**, **git safety checks**, and **plugin cache sync**.
 
 **Why useful?** Each hook solves a real annoyance:
 
+- **Git session safety net** — every session automatically snapshots your working tree onto a parallel branch; Claude can use the rollback helper to trace and restore any file to any checkpoint, across sessions, autonomously
 - **Session memory** — pick up where you left off; sessions leave a searchable paper trail instead of vanishing
 - **Plan rename** — Claude's random three-word plan filenames (`bubbly-imagining-stearns.md`) become dated, human-readable names (`20260211-1620-add-user-auth.md`)
 - **Git safety** — preflight checks for SSH connectivity, GPG signing, and accidental secret commits before every `git commit`
@@ -14,6 +20,75 @@ Productivity hooks for [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 Claude Code supports [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) — custom scripts that run automatically at specific lifecycle events (session start, session end, before compaction, before tool use). Hooks let you extend Claude Code's behavior without modifying the tool itself.
 
 ## Hooks Included
+
+### Git Session Safety Net (`hooks/git-session/`)
+
+Automatic working tree snapshots on parallel git branches — without ever switching your checked-out branch.
+
+| Hook                          | Event        | What It Does |
+|-------------------------------|--------------|-------------|
+| `git-session-start.sh`        | SessionStart | Creates a session branch (`claude/session/YYYYMMDD-HHMM-XXXX`) from HEAD and takes an initial snapshot |
+| `git-session-checkpoint.sh`   | PreCompact   | Snapshots the working tree before context compaction |
+| `git-session-end.sh`          | Stop         | Takes a final snapshot and prints a summary with the branch name |
+| `claude-session-rollback.sh`  | (helper)     | CLI tool for listing, tracing, and restoring files from session snapshots |
+
+**How it works:**
+1. On session start, a new branch is created from `HEAD` using `git branch` (no checkout)
+2. Working tree snapshots are committed to the session branch using git plumbing (`write-tree` + `commit-tree` + `update-ref`) — your checked-out branch is never touched
+3. Each snapshot tries GPG signing first, falls back to unsigned if unavailable
+4. On session end, a summary is printed: branch name, checkpoint count, rollback instructions
+5. Sessions are fully independent — concurrent sessions each get their own branch
+
+#### In action
+
+**Before any session** — a clean Git Graph with just your working branch:
+
+![Git Graph before sessions](assets/01_before_session1.png)
+
+**After session 1** — the first `claude/session/*` branch forks off HEAD with 2 snapshots (start + end):
+
+![Git Graph after session 1](assets/02_session1.png)
+
+**After session 2** — a second session branch appears with 3 snapshots (start + checkpoint + end):
+
+![Git Graph after session 2](assets/03_session2.png)
+
+**Trace a file** — `--trace` finds every version across all sessions in one pass:
+
+![Trace output showing 5 snapshots across 2 sessions](assets/04_rollback_diff.png)
+
+**Restore any version** — pick a commit from the trace and restore instantly:
+
+![Restore from session snapshot](assets/05_restore_session_files.png)
+
+**Rollback helper** (`claude-session-rollback.sh`):
+```bash
+claude-session-rollback.sh --list                          # List all session branches
+claude-session-rollback.sh --trace <path>                  # Find all versions of a file across sessions
+claude-session-rollback.sh --restore <branch>:<commit> <path>  # Restore a specific version
+claude-session-rollback.sh --show <branch>                 # Show checkpoint log
+claude-session-rollback.sh --diff <branch>                 # Show files changed
+claude-session-rollback.sh --cleanup [days]                # List stale branches
+```
+
+**Example — tracing a corrupted file:**
+```
+$ claude-session-rollback.sh --trace src/config.js
+Trace: src/config.js
+Current: hash=a1b2c3d4e5f6  size=87
+
+  COMMIT    BRANCH                                    STATUS    SIZE    DATE              MESSAGE
+  ------    ------                                    ------    ----    ----              -------
+  8172f51a  claude/session/20260214-1339-9061         DIFFERS   2048    2026-02-14 13:41  WIP: session end — final snapshot
+  aa8b23da  claude/session/20260214-1339-9061         same      87      2026-02-14 13:40  WIP: session start — initial snapshot
+
+Found 2 snapshot(s). Rows marked DIFFERS contain a version different from current.
+Use: --restore claude/session/20260214-1339-9061:8172f51a src/config.js
+```
+
+**Why?** Claude Code sessions can modify files in ways that are hard to undo — especially across long sessions with context compaction. This hook gives you automatic, zero-effort versioning. When something goes wrong, just ask Claude: it will run `~/.claude/hooks/claude-code-hooks/git-session/claude-session-rollback.sh` to trace all versions and restore the right one — no manual git commands needed.
+
+> **Note:** Requires a git repository. Non-git projects are silently skipped (exit 0).
 
 ### Session Memory (`hooks/memory/`)
 
@@ -98,7 +173,7 @@ mkdir -p ~/.claude/hooks/claude-code-hooks
 cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
 ```
 
-2. Add to `~/.claude/settings.json` (merge with existing config):
+2. Add to `~/.claude/settings.json` (merge with existing config — see `examples/settings.json` for the full version):
 ```json
 {
   "hooks": {
@@ -106,15 +181,9 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
       {
         "matcher": "*",
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/claude-code-hooks/memory/session-end.sh"
-          },
-          {
-            "type": "command",
-            "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js",
-            "timeout": 10
-          }
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/git-session/git-session-end.sh", "timeout": 10 },
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/memory/session-end.sh" },
+          { "type": "command", "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js", "timeout": 10 }
         ]
       }
     ],
@@ -122,20 +191,10 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
       {
         "matcher": "*",
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/claude-code-hooks/memory/session-start.sh"
-          },
-          {
-            "type": "command",
-            "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/claude-code-hooks/plugin-sync/plugin-cache-sync.sh",
-            "timeout": 15
-          }
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/git-session/git-session-start.sh", "timeout": 10 },
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/memory/session-start.sh" },
+          { "type": "command", "command": "node ~/.claude/hooks/claude-code-hooks/plan-rename/rename-plan.js", "timeout": 10 },
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/plugin-sync/plugin-cache-sync.sh", "timeout": 15 }
         ]
       }
     ],
@@ -143,10 +202,8 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
       {
         "matcher": "*",
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/claude-code-hooks/memory/pre-compact.sh"
-          }
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/git-session/git-session-checkpoint.sh", "timeout": 10 },
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/memory/pre-compact.sh" }
         ]
       }
     ],
@@ -154,10 +211,7 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
       {
         "matcher": "Bash(git commit*)",
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/claude-code-hooks/cicd/pre-commit-guard.sh"
-          }
+          { "type": "command", "command": "~/.claude/hooks/claude-code-hooks/cicd/pre-commit-guard.sh" }
         ]
       }
     ]
@@ -170,12 +224,14 @@ cp -r hooks/* ~/.claude/hooks/claude-code-hooks/
 chmod +x ~/.claude/hooks/claude-code-hooks/memory/*.sh
 chmod +x ~/.claude/hooks/claude-code-hooks/cicd/*.sh
 chmod +x ~/.claude/hooks/claude-code-hooks/plugin-sync/*.sh
+chmod +x ~/.claude/hooks/claude-code-hooks/git-session/*.sh
 ```
 
 ## Pick and Choose
 
 You don't need all hooks. Install only what you want:
 
+- **Git session safety net only** — copy `hooks/git-session/`, wire `SessionStart`, `PreCompact`, and `Stop` events
 - **Session memory only** — copy `hooks/memory/`, wire `Stop`, `SessionStart`, and `PreCompact` events
 - **Plan rename only** — copy `hooks/plan-rename/`, wire `Stop` and `SessionStart` events
 - **Git safety only** — copy `hooks/cicd/`, wire `PreToolUse` event
@@ -206,6 +262,9 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 
 | Hook                          | Lifecycle Event     | Receives stdin?              | Blocking? |
 |-------------------------------|---------------------|------------------------------|-----------|
+| `git-session-start.sh`        | SessionStart        | Yes (JSON with `session_id`) | No |
+| `git-session-checkpoint.sh`   | PreCompact          | Yes (JSON)                   | No |
+| `git-session-end.sh`          | Stop                | Yes (JSON with `session_id`) | No |
 | `session-start.sh`            | SessionStart        | No                           | No |
 | `session-end.sh`              | Stop                | Yes (JSON with `session_id`) | No |
 | `pre-compact.sh`              | PreCompact          | Yes (JSON with `session_id`) | No |
@@ -217,7 +276,8 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 
 - **Claude Code** CLI installed
 - **Node.js** (for plan-rename hook)
-- **Bash** (for memory, cicd, and plugin-sync hooks)
+- **Bash** (for memory, cicd, git-session, and plugin-sync hooks)
+- **Git** (for git-session hooks — non-git projects are silently skipped)
 - **rsync** (for plugin-cache-sync — typically pre-installed on Linux/macOS)
 - **SSH key** configured for GitHub (for pre-commit-guard)
 - **GPG key** configured (optional — pre-commit-guard warns but doesn't block without it)
@@ -235,6 +295,7 @@ cp hooks/plan-rename/config.example.json hooks/plan-rename/config.json
 chmod +x ~/.claude/hooks/claude-code-hooks/memory/*.sh
 chmod +x ~/.claude/hooks/claude-code-hooks/cicd/*.sh
 chmod +x ~/.claude/hooks/claude-code-hooks/plugin-sync/*.sh
+chmod +x ~/.claude/hooks/claude-code-hooks/git-session/*.sh
 ```
 
 **GPG_TTY not set:**
@@ -257,6 +318,19 @@ echo 'export GPG_TTY=$(tty)' >> ~/.bashrc
 - Check that `rsync` is installed: `which rsync`
 - Override scan roots via `PLUGIN_ROOTS="/path/to/plugins"` environment variable
 - The hook skips directories where source and cache resolve to the same path
+
+**Git session branches piling up:**
+Session branches are intentionally kept after session end (for rollback). Clean up old ones:
+```bash
+~/.claude/hooks/claude-code-hooks/git-session/claude-session-rollback.sh --cleanup 7  # list branches older than 7 days
+git branch --list 'claude/session/*' | xargs git branch -D  # delete all
+```
+
+**Git session state files:**
+Per-session state files are stored at `~/.claude/sessions/.git-state-*`. Clean up with:
+```bash
+rm -f ~/.claude/sessions/.git-state-*
+```
 
 **Session files:**
 Session logs are stored in `~/.claude/sessions/`. Compaction events are logged to `~/.claude/sessions/compaction-log.txt`.
@@ -289,6 +363,60 @@ rm -rf /tmp/claude-code-hooks-test /tmp/claude-test-home
 ```
 
 Expected output: each hook reports success, and `bubbly-testing-hooks.md` gets renamed to a dated filename.
+
+### Git Session Safety Net — End-to-End Test
+
+This test runs inside any git repo and proves the full cycle: snapshot → corrupt → trace → restore.
+
+```bash
+# Run from any git repository
+HOOKS="/path/to/claude-code-hooks/hooks/git-session"  # or your install path
+# HOOKS="/tmp/claude-code-hooks-test/git-session" for continuing the previous test Without disruption
+
+# 1. Create a test file and commit it
+echo "original content" > _test_session_file.txt
+git add _test_session_file.txt && git commit -m "test: add session test file"
+
+# 2. Simulate session start (creates branch + initial snapshot)
+echo '{"session_id":"test-rollback-1234"}' | bash "$HOOKS/git-session-start.sh" 2>&1
+
+# 3. Corrupt the file
+echo "CORRUPTED" > _test_session_file.txt
+
+# 4. Simulate session end (captures final snapshot with corruption)
+echo '{"session_id":"test-rollback-1234"}' | bash "$HOOKS/git-session-end.sh" 2>&1
+
+# 5. Trace the file — find all versions across session branches
+bash "$HOOKS/claude-session-rollback.sh" --trace _test_session_file.txt
+# Look for rows marked DIFFERS — those have the original content
+
+# 6. Restore the clean version (use the commit hash from --trace output)
+# Replace <branch> and <commit> with values from the trace output:
+#   bash "$HOOKS/claude-session-rollback.sh" --restore <branch>:<commit> _test_session_file.txt
+
+# 7. Verify
+cat _test_session_file.txt   # should show "original content"
+
+# 8. Cleanup
+git checkout -- _test_session_file.txt
+git branch --list 'claude/session/????????-????-test*' | xargs git branch -D
+rm -f ~/.claude/sessions/.git-state-test-rol*
+```
+
+Expected output at step 5:
+```
+Trace: _test_session_file.txt
+Current: hash=...  size=10
+
+  COMMIT    BRANCH                              STATUS    SIZE  DATE              MESSAGE
+  ------    ------                              ------    ----  ----              -------
+  abcd1234  claude/session/...-test             DIFFERS   17    ...               WIP: session end — final snapshot
+  ef567890  claude/session/...-test             DIFFERS   17    ...               WIP: session start — initial snapshot
+
+Found 2 snapshot(s). Rows marked DIFFERS contain a version different from current.
+```
+
+The `DIFFERS` rows contain the original (pre-corruption) file. Use `--restore` with either commit to recover it.
 
 ## License
 
